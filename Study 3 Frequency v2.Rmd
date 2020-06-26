@@ -1,0 +1,92 @@
+---
+title: "Study 3: Frequency"
+output: html_document
+---
+```{r}
+## Import Libraries.
+library("dplyr")
+```
+
+Importing dataframes
+```{r}
+## Define working directories.
+root_wd <- "~/UNI/Master/Data science/Thesis/Data/data/"
+wd_add <- c("2018-2019", "2019-2020/1", "2019-2020/2", "DEiA")
+
+## Initalize empty vector
+percs_del <- c()
+percs_na_freq <- c()
+
+## Loop over all sessions.
+for (wd in wd_add) {
+  setwd(paste0(root_wd, wd))
+  dir_names <- list.dirs()[-1]
+
+  ## Initialize empty dataframe and assign row and column names.
+  empty_dataframe <- data.frame(matrix(nrow = length(dir_names), ncol = 3))
+  rownames(empty_dataframe) <- substr(dir_names, 3, 50)
+  colnames(empty_dataframe) <- c("happy", "angry", "fear")
+
+  ## Loop over all pitches in session.
+  for (i in 1:length(dir_names)) {
+    setwd(paste0(root_wd, wd, dir_names[i]))
+    filenames <- list.files() 
+    
+    ## Create indices for all 4 dataframes.
+    index_j1 <- grepl("Judge1", filenames, fixed = T)
+    index_j2 <- grepl("Judge2", filenames, fixed = T)
+    index_j3 <- grepl("Judge3", filenames, fixed = T)
+    index_p <- abs((index_j1 + index_j2 + index_j3) - 1)
+  
+    ## Assign pitcher dataframe to variable using above made index.
+    pitcher = read.csv(filenames[index_p], header = T)
+  
+    ## Delete low confidence rows and save percentage of removed rows to vector.
+    num_rows_before <- nrow(pitcher)
+    rate <- 0.95
+    pitcher <- pitcher[pitcher$confidence >= rate,]
+    perc_rows_del <- (num_rows_before - nrow(pitcher)) / num_rows_before * 100
+    percs_del <- append(percs_del, perc_rows_del)
+    print(paste("deleted", perc_rows_del, "% of rows with low confidence" ))
+  
+    ## Select useful columns
+    pitcher <- select(pitcher, 1:5, 697:714)
+  
+    ## Delete rows with NA values and save percentage of removed rows to vector.
+    num_rows_before <- nrow(pitcher)
+    pitcher <- na.omit(pitcher)
+    perc_NAs <- (num_rows_before - nrow(pitcher)) / num_rows_before * 100
+    print(paste("deleted", perc_NAs, "% of rows with NAs" ))
+    percs_na_freq <- append(percs_na_freq, perc_NAs)
+  
+    ## Count frames for specific emotions.
+    total_frames <- nrow(pitcher)
+    ## All combinations for Happy.
+    happy_frames <- nrow(filter(pitcher, AU12_c == 1))
+    ## All combinations for Angry.
+    angry_frames <- nrow(filter(pitcher, AU04_c == 1 & 
+                                  (AU05_c == 1 | AU07_c == 1)))
+    ## All combinations for Fear.
+    fear_frames <- nrow(filter(pitcher, AU01_c == 1 & AU02_c == 1 & 
+                                 AU04_c == 1)) + 
+      nrow(filter(pitcher, AU05_c == 1 & AU20_c == 1))
+   
+    ## Add frequency variables to dataframe.
+    empty_dataframe[i,"happy"] <- happy_frames / total_frames
+    empty_dataframe[i,"angry"] <- angry_frames / total_frames
+    empty_dataframe[i,"fear"] <- fear_frames / total_frames
+  }
+  setwd(paste0(root_wd, "Ratings/", wd))
+  write.csv(empty_dataframe, "facial_frequency.csv")
+  if (wd == "2018-2019") {
+    facial_frequency <- empty_dataframe
+  } else {
+    facial_frequency <- rbind(facial_frequency, empty_dataframe)
+  }
+}
+setwd(paste0(root_wd, "Ratings"))
+save(facial_frequency, file = "facial_frequency.Rda")
+write.csv(facial_frequency, "facial_frequency.csv")
+write.csv(percs_del, "percs_del_freq.csv")
+write.csv(percs_na_freq, "percs_na_freq.csv")
+```

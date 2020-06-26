@@ -1,0 +1,114 @@
+---
+title: "Study 2: Gaze"
+output: html_document
+---
+
+```{r}
+## Import Libraries.
+library("dplyr")
+library("ggplot2")
+```
+
+
+```{r}
+## Define Working directories.
+root_wd <- "~/UNI/Master/Data science/Thesis/Data/data/"
+wd_add <- c("2018-2019", "2019-2020/1", "2019-2020/2", "DEiA")
+
+## Initalize empty vector
+percs_del <- c()
+percs_na_gaze <- c()
+
+## Loop over all sessions.
+for (wd in wd_add) {
+  setwd(paste0(root_wd, wd))
+  dir_names <- list.dirs()[-1]
+
+  ## Initialize empty dataframe and assign row and column names.
+  empty_dataframe <- data.frame(matrix(nrow = length(dir_names), ncol = 3))
+  rownames(empty_dataframe) <- substr(dir_names, 3, 50)
+  colnames(empty_dataframe) <- c("judge1", "judge2", "judge3")
+
+  ## Loop over all pitches in session.
+  for (i in 1:length(dir_names)) {
+    setwd(paste0(root_wd, wd, dir_names[i]))
+    filenames <- list.files() 
+  
+    ## Create indices for all 4 dataframes.
+    index_j1 <- grepl("Judge1", filenames, fixed = T)
+    index_j2 <- grepl("Judge2", filenames, fixed = T)
+    index_j3 <- grepl("Judge3", filenames, fixed = T)
+    index_p <- abs((index_j1 + index_j2 + index_j3) - 1)
+  
+    ## Assign dataframe to variable using above made index.
+    pitcher = read.csv(filenames[index_p], header = T)
+  
+    ## Select useful columns
+    pitcher <- select(pitcher, 1:5, 12)
+  
+    ## Delete low confidence rows.
+    num_rows_before <- nrow(pitcher)
+    rate <- 0.95
+    pitcher <- pitcher[pitcher$confidence >= rate,]
+    perc_rows_del <- (num_rows_before - nrow(pitcher)) / num_rows_before * 100
+    percs_del <- append(percs_del, perc_rows_del)
+    print(paste("deleted", perc_rows_del, "% of rows with low confidence" ))
+
+    ## Count and omit rows with NAs
+    num_rows_before <- nrow(pitcher)
+    pitcher <- na.omit(pitcher)
+    perc_NAs <- (num_rows_before - nrow(pitcher)) / num_rows_before * 100
+    print(paste("deleted", perc_NAs, "% of rows with NAs" ))
+    percs_na_gaze <- append(percs_na_gaze, perc_NAs)
+  
+    ## Probability density of eye gaze.
+    #ggplot(pitcher, aes(gaze_angle_x)) +
+    #geom_density(kernel = "gaussian")
+  
+    ## Cluster eye gaze data using k-means clustering with k = 3.
+    # note to self: Gaze_angle_x positive is judge1, negative is judge3
+    pitcher_gaze <- pitcher$gaze_angle_x
+    fit <- kmeans(pitcher_gaze, 3)
+    aggr <- aggregate(pitcher_gaze, by=list(fit$cluster), FUN=mean)
+    aggr
+    pitcher_gaze <- data.frame(pitcher_gaze, fit$cluster)
+    colnames(pitcher_gaze) <- c("gaze_angle_x", "cluster")
+    pitcher_gaze$index <- c(1:nrow(pitcher_gaze))
+  
+    ## Recode cluster so that 1 is left and 3 is right.
+    pitcher_gaze$cluster <- factor(pitcher_gaze$cluster, aggr[order(aggr$x),]$Group.1, 
+                                 labels = c("judge3", "judge2", "judge1"))
+    
+    ## Code to Create plot.
+    #ggplot(pitcher_gaze, aes(gaze_angle_x, index, colour = cluster)) +
+    #geom_point() + scale_x_reverse() + 
+    #labs(x = "X angle of gaze (positive is left; negative is right)", 
+    #y = "Frame", title = "X angle of eye gaze per frame") + 
+    #theme_classic(base_size = 35) +
+    #theme(plot.title = element_text(hjust = 0.5)) +
+    #guides(colour = guide_legend(override.aes = list(size=10)))
+   
+    
+    ## Calculate eye gaze time proportions by deviding by total n of frames.
+    gaze_props <- table(pitcher_gaze$cluster) / nrow(pitcher_gaze)
+    gaze_props  
+  
+    ## Add variables to dataframe
+    empty_dataframe[i,"judge1"] <- gaze_props["judge1"]
+    empty_dataframe[i,"judge2"] <- gaze_props["judge2"]
+    empty_dataframe[i,"judge3"] <- gaze_props["judge3"]
+  }
+  setwd(paste0(root_wd, "Ratings/", wd))
+  write.csv(empty_dataframe, "gaze.csv")
+  if (wd == "2018-2019") {
+    gaze <- empty_dataframe
+  } else {
+    gaze <- rbind(gaze, empty_dataframe)
+  }
+}
+setwd(paste0(root_wd, "Ratings"))
+save(gaze, file = "Gaze.Rda")
+write.csv(gaze, "gaze.csv")
+write.csv(percs_del, "percs_del_gaze.csv")
+write.csv(percs_na_gaze, "percs_na_gaze.csv")
+```

@@ -1,0 +1,171 @@
+---
+title: "Study 1: Mimicry"
+output: html_document
+---
+```{r}
+## Import Libraries.
+library("dplyr")
+```
+
+```{r}
+## Define working directories.
+root_wd <- "~/UNI/Master/Data science/Thesis/Data/data/"
+wd_add <- c("2018-2019", "2019-2020/1", "2019-2020/2", "DEiA")
+
+## Initalize empty vectors.
+perc_dropped_rows <- c()
+diff_rows_vec <- c()
+
+## Loop over all sessions.
+for (wd in wd_add) {
+  setwd(paste0(root_wd, wd))
+  dir_names <- list.dirs()[-1]
+  row_names <- c()
+  for (pitch_name in substr(dir_names, 3, 50)) {
+    row_names <- append(row_names, paste0(pitch_name, "_judge1"), 
+                        after = length(row_names))
+    row_names <- append(row_names, paste0(pitch_name, "_judge2"))
+    row_names <- append(row_names, paste0(pitch_name, "_judge3"))
+  }
+  
+  ## Initalize empty dataframe and assign above created row names.
+  empty_dataframe <- data.frame(matrix(nrow = length(row_names), ncol = 5))
+  rownames(empty_dataframe) <- row_names
+
+  ## Initalize counter and loop over all pitches in session.
+  i = 1
+  for (dir_name in dir_names) {
+    setwd(paste0(root_wd, wd, dir_name))
+    filenames <- list.files() 
+  
+    ## Create indices for all 4 dataframes.
+    index_j1 <- grepl("Judge1", filenames, fixed = T)
+    index_j2 <- grepl("Judge2", filenames, fixed = T)
+    index_j3 <- grepl("Judge3", filenames, fixed = T)
+    index_p <- abs((index_j1 + index_j2 + index_j3) - 1)
+  
+    ## Assign dataframes to variables using above made indices.
+    pitcher = read.csv(filenames[index_p], header = T)
+    judge1 = read.csv(filenames[index_j1], header = T)
+    judge2 = read.csv(filenames[index_j2], header = T)
+    judge3 = read.csv(filenames[index_j3], header = T)
+  
+    ## Check if dataframes have same column names.
+    print(paste("colnames are the same? ", 
+                all(colnames(pitcher) == colnames(judge1) & 
+                      colnames(pitcher) == colnames(judge2) & 
+                      colnames(pitcher) ==  colnames(judge3))))
+    
+    ## Dropping last rows of bigger dataframes to have them all the same size
+    ## and save percentage of rows removed to vector.
+    min_rows <- min(c(nrow(pitcher), nrow(judge1), nrow(judge2), nrow(judge3)))
+    max_rows <- max(c(nrow(pitcher), nrow(judge1), nrow(judge2), nrow(judge3)))
+    diff_rows <- max_rows - min_rows
+    diff_rows_vec <- append(diff_rows_vec, diff_rows)
+    print(paste(diff_rows/25, "seconds difference"))
+    pitcher <- pitcher[1:min_rows,]
+    judge1 <- judge1[1:min_rows,]
+    judge2 <- judge2[1:min_rows,]
+    judge3 <- judge3[1:min_rows,]
+    
+    ## Select useful columns.
+    pitcher <- select(pitcher, "confidence", "AU01_r", "AU04_r", "AU05_r", 
+                      "AU06_r", "AU12_r")
+    judge1 <- select(judge1, "confidence", "AU01_r", "AU04_r", "AU05_r", 
+                     "AU06_r", "AU12_r")
+    judge2 <- select(judge2, "confidence", "AU01_r", "AU04_r", "AU05_r", 
+                     "AU06_r", "AU12_r")
+    judge3 <- select(judge3, "confidence", "AU01_r", "AU04_r", "AU05_r", 
+                     "AU06_r", "AU12_r")
+    
+    ## Deleting rows with low confidence. For each pitcher-judge pairing the 
+    ## rows where one or both DFs have a low conf. rate are deleted from both 
+    ## DFs. This way temporal structure is maintained between the dataframes of 
+    ## the pitcher and each judge for the cross-correlation.
+    rate <- 0.95
+    
+    ## Pitcher and Judge1.
+    max_rows1 <- max(c(nrow(pitcher), nrow(judge1)))
+    indices <- pitcher$confidence >= rate & 
+               judge1$confidence >= rate
+    pitcher1 <- pitcher[indices,]
+    judge1 <- judge1[indices,]
+    max_rows2 <- max(c(nrow(pitcher1), nrow(judge1)))
+    diff_rows2 <- max_rows1 - max_rows2
+    perc_dropped_rows <- append(perc_dropped_rows, diff_rows2/max_rows1 * 100)
+    print(paste0("Deleted n of rows: ", diff_rows2, ". which equals: ", 
+                 diff_rows2/max_rows1 * 100, "%"))
+    
+    ## Pitcher and Judge2.
+    max_rows1 <- max(c(nrow(pitcher), nrow(judge2)))
+    indices <- pitcher$confidence >= rate & 
+               judge2$confidence >= rate
+    pitcher2 <- pitcher[indices,]
+    judge2 <- judge2[indices,]
+    max_rows2 <- max(c(nrow(pitcher2), nrow(judge2)))
+    diff_rows2 <- max_rows1 - max_rows2
+    perc_dropped_rows <- append(perc_dropped_rows, diff_rows2/max_rows1 * 100)
+    print(paste0("Deleted n of rows: ", diff_rows2, ". which equals: ", 
+                 diff_rows2/max_rows1 * 100, "%"))
+    
+    ## Pitcher and Judge3.
+    max_rows1 <- max(c(nrow(pitcher), nrow(judge3)))
+    indices <- pitcher$confidence >= rate & 
+               judge3$confidence >= rate
+    pitcher3 <- pitcher[indices,]
+    judge3 <- judge3[indices,]
+    max_rows2 <- max(c(nrow(pitcher3), nrow(judge3)))
+    diff_rows2 <- max_rows1 - max_rows2
+    perc_dropped_rows <- append(perc_dropped_rows, diff_rows2/max_rows1 * 100)
+    print(paste0("Deleted n of rows: ", diff_rows2, ". which equals: ", 
+                 diff_rows2/max_rows1 * 100, "%"))
+  
+    ## Set colnames empty dataframe.
+    col_names <- colnames(pitcher1)[-1]
+    colnames(empty_dataframe) <- substr(col_names, 1, 4)
+  
+    ## Show number of NAs.
+    print((filenames[index_p]))
+    print("pitcher1")
+    print(table(is.na(pitcher1)))
+    print("pitcher2")
+    print(table(is.na(pitcher2)))
+    print("pitcher3")
+    print(table(is.na(pitcher3)))
+    print((filenames[index_j1]))
+    print(table(is.na(judge1)))
+    print((filenames[index_j2]))
+    print(table(is.na(judge2)))
+    print((filenames[index_j3]))
+    print(table(is.na(judge3)))
+  
+    ## Calculate crosscorrelations for the pitcher and each jury for each AU.
+    # note to self: negative lag means Judge's expression comes first.
+    lag <- 25
+    for (j in 1:length(col_names)) {
+      empty_dataframe[i,j] <- max(ccf(pitcher1[col_names[j]], 
+                                      judge1[col_names[j]], lag.max = lag, 
+                                      plot = F)$acf[1:25])
+      empty_dataframe[i+1,j] <- max(ccf(pitcher2[col_names[j]], 
+                                      judge2[col_names[j]], lag.max = lag, 
+                                      plot = F)$acf[1:25])
+      empty_dataframe[i+2,j] <- max(ccf(pitcher3[col_names[j]], 
+                                      judge3[col_names[j]], lag.max = lag, 
+                                      plot = F)$acf[1:25])
+    }
+    i = i + 3
+  }
+  setwd(paste0(root_wd, "Ratings/", wd))
+  write.csv(empty_dataframe, "mimicry.csv")
+  if (wd == "2018-2019") {
+    mimicry <- empty_dataframe
+  } else {
+    mimicry <- rbind(mimicry, empty_dataframe)
+  }
+}
+setwd(paste0(root_wd, "Ratings"))
+save(mimicry, file = "Mimicry.Rda")
+write.csv(mimicry, "mimicry.csv")
+write.csv(diff_rows_vec, "diff_rows_min_max_mimicry.csv")
+write.csv(perc_dropped_rows, "perc_dropped_rows_low_conf_mimicry.csv")
+```

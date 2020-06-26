@@ -1,0 +1,224 @@
+---
+title: "Analyses"
+output: html_document
+---
+Loading packages
+```{r}
+## Import Libraries.
+library("MASS")
+library("leaps")
+library("caret")
+library("ggplot2")
+## Set working directory.
+setwd("~/UNI/Master/Data science/Thesis/Data/data/Ratings")
+```
+
+Importing data
+```{r}
+## Import data.
+load("mimicry.Rda")  # Or mimicry_judge.Rda or mimicry_all.csv
+load("gaze.Rda")
+load("facial_frequency.Rda")
+prob_inv <- read.csv("prob_inv.csv")
+coach <- read.csv("coach.csv")
+mean_prob_inv <- read.csv("mean_prob_inv.csv")
+## Merging and manipulating data.
+mimicry$prob_inv <- as.numeric(unlist(prob_inv))
+mimicry$coach <- as.numeric(unlist(coach))
+gaze <- data.frame(gaze = c(unlist(t(gaze))), prob_inv = prob_inv)
+facial_frequency$mean_prob_inv <- as.numeric(unlist(mean_prob_inv))
+## Delete unneeded dataframes.
+rm(coach)
+rm(prob_inv)
+rm(mean_prob_inv)
+```
+
+Study 1
+Linear Regression Model: AU's -> prob_inv
+```{r}
+## Check for assumptions.
+# Linearity
+for (col in colnames(mimicry[1:5])) {
+  plot(mimicry[,col], mimicry[,"prob_inv"], xlab = col, ylab = "prob_inv", 
+       main = paste("Scatterplot", col, "and prob_inv"))
+}
+
+# Normality
+for (col in colnames(mimicry[1:7])) {
+  hist(mimicry[,col], xlab = col, main = paste("Histogram of", col), breaks = 9, prob=TRUE)
+  curve(dnorm(x, mean=mean(mimicry[,col]), sd=sqrt(var(mimicry[,col]))), col="darkblue", lwd=2, add=TRUE, yaxt="n")
+
+}
+
+# Multicollinearity
+res <- cor(mimicry[1:5])
+round(res, 2)
+
+nv5 <- lm(prob_inv ~ AU05 + AU12 + AU06 + AU04 + AU01, data = mimicry)
+car::vif(nv5)
+
+# Homogeneity of residual variance
+plot(nv5, 3)
+```
+
+```{r}
+# regsubsets [leaps]: Finding best models using 1 to 5 variables.
+models <- regsubsets(prob_inv ~ AU01 + AU04 + AU05 + AU06 + AU12, data = mimicry,
+                     nvmax = 5, method = "backward")
+summary(models)
+```
+
+```{r}
+nv1 <- lm(prob_inv ~ AU05, data = mimicry)
+nv2 <- lm(prob_inv ~ AU05 + AU12, data = mimicry)
+nv3 <- lm(prob_inv ~ AU05 + AU12 + AU06, data = mimicry)
+nv4 <- lm(prob_inv ~ AU05 + AU12 + AU06 + AU04, data = mimicry)
+nv5 <- lm(prob_inv ~ AU05 + AU12 + AU06 + AU04 + AU01, data = mimicry)
+
+summary(nv1)
+summary(nv2)
+summary(nv3)
+summary(nv4)
+summary(nv5)
+
+# StepAIC [MASS]: Using backwards selection finding best model.
+full.model <- lm(prob_inv ~ AU01 + AU04 + AU05 + AU06 + AU12, data = mimicry)
+step.model <- stepAIC(full.model, direction = "backward", trace = F)
+summary(step.model)
+```
+
+Study 2
+Correlation: gaze -> prob_inv
+```{r}
+# Correlation test prob_inv & coach
+cor.test(gaze$gaze, gaze$prob_inv)
+# Scatterplot gaze time propotion & probability to invest. With regression line.
+ggplot(data = gaze, mapping = aes(gaze, prob_inv)) +
+  geom_point() + 
+  geom_smooth(method=lm, se=FALSE) +
+  labs(x = "Relative gaze proportions", 
+  y = "Probability to Invest", title = "Scatterplot of ralative gaze proportion and probability to invest") +
+  theme(legend.position = "none") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_classic(base_size = 15)
+  #guides(colour = guide_legend(override.aes = list(size=10)))
+```
+
+Study 3
+3 correlations: facial expression -> mean_prob_inv
+```{r}
+# Correlation tests
+cor.test(facial_frequency$happy, facial_frequency$mean_prob_inv)
+cor.test(facial_frequency$angry, facial_frequency$mean_prob_inv)
+cor.test(facial_frequency$fear, facial_frequency$mean_prob_inv)
+
+# Scatterplots
+# Optional
+library("scales")
+facial_frequency2 <- facial_frequency[facial_frequency$happy < 0.50 & facial_frequency$angry < 0.50,]
+facial_frequency$happy <- rescale(facial_frequency$happy)
+facial_frequency$angry <- rescale(facial_frequency$angry)
+facial_frequency$fear <- rescale(facial_frequency$fear)
+
+ggplot(data = facial_frequency) +
+  geom_point(aes(x = happy, y = mean_prob_inv, color = "Happy")) + 
+  geom_point(aes(x = angry, y = mean_prob_inv, color = "Angry")) +
+  geom_point(aes(x = fear, y = mean_prob_inv, color = "Fear")) +
+  geom_smooth(method=lm, se=FALSE, aes(x = happy, y = mean_prob_inv, color = "Happy"))+
+  geom_smooth(method=lm, se=FALSE, aes(x = angry, y = mean_prob_inv, color = "Angry")) +
+  geom_smooth(method=lm, se=FALSE, aes(x = fear, y = mean_prob_inv, color = "Fear")) +
+  labs(x = "Relative facial expression frequencies", 
+  y = "Probability to Invest", title = "Scatterplot of facial frequencies and probability to invest") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_classic(base_size = 15)
+```
+
+
+Extra Analyses
+Correlation: prob_inv -> coach
+```{r}
+# Correlation test prob_inv & coach
+cor.test(mimicry$prob_inv, mimicry$coach, alternative = "greater")
+# Scatterplot prob_inv & coach. With regression line.
+ggplot(data = mimicry, mapping = aes(prob_inv, coach)) +
+  geom_point() + 
+  geom_smooth(method=lm, se=FALSE)
+```
+
+Linear model AU's -> coach
+```{r}
+# regsubsets [leaps]: Finding best models using 1 to 5 variables.
+models <- regsubsets(coach ~ AU01 + AU04 + AU05 + AU06 + AU12, data = mimicry, 
+                     nvmax = 5, method = "backward")
+summary(models)
+```
+
+```{r}
+nv1 <- lm(coach ~ AU12, data = mimicry)
+nv2 <- lm(coach ~ AU12 + AU05, data = mimicry)
+nv3 <- lm(coach ~ AU12 + AU05 + AU06, data = mimicry)
+nv4 <- lm(coach ~ AU12 + AU05 + AU06 + AU01, data = mimicry)
+nv5 <- lm(coach ~ AU12 + AU05 + AU06 + AU01 + AU04, data = mimicry)
+
+summary(nv1)
+summary(nv2)
+summary(nv3)
+summary(nv4)
+summary(nv5)
+
+# StepAIC [MASS]: Using backwards selection finding best model.
+full.model <- lm(coach ~ AU01 + AU04 + AU05 + AU06 + AU12, data = mimicry)
+step.model <- stepAIC(full.model, direction = "backward", trace = F)
+summary(step.model)
+```
+
+```{r}
+### NOT USED FOR THESIS.
+## Bootstrap to find best performing model.
+#[caret]
+# Set seed for reproducibility.
+set.seed(333)
+# Initialize empty vector.
+bootstrap <- c()
+for (i in 1:500) {
+  # Set up repeated 5-fold cross-validation.
+  train.control <- trainControl(method = "cv", number = 5)
+  # Train the models.
+  step.model <- train(coach ~ AU01 + AU04 + AU05 + AU06 + AU12, data = mimicry,
+                      method = "leapBackward", 
+                      tuneGrid = data.frame(nvmax = 1:5),
+                      trControl = train.control)
+  # Append number of variables of best performing model to vector.
+  bootstrap <- append(bootstrap, step.model$bestTune$nvmax)
+}
+table(bootstrap)
+```
+
+AU -> ProbInv
+```{r}
+### NOT USED FOR THESIS.
+## Bootstrap to find best performing model.
+#[caret]
+# Set seed for reproducibility.
+set.seed(333)
+# Initialize empty vector.
+bootstrap <- c()
+for (i in 1:500) {
+  # Set up repeated 5-fold cross-validation.
+  train.control <- trainControl(method = "cv", number = 5)
+  # Train the models.
+  step.model <- train(prob_inv ~ AU01 + AU04 + AU05 + AU06 + AU12, 
+                      data = mimicry, method = "leapBackward", 
+                      tuneGrid = data.frame(nvmax = 1:5),
+                      trControl = train.control)
+  # Append number of variables of best performing model to vector.
+  bootstrap <- append(bootstrap, step.model$bestTune$nvmax)
+}
+table(bootstrap)
+```
+
+Facial frequency -> Coach
+```{r}
+facial_frequency$mean_expression <- rowMeans(facial_frequency[,1:3])
+cor.test(facial_frequency$mean_expression, facial_frequency$mean_prob_inv)
+```
